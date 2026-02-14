@@ -1,50 +1,53 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORT="${PORT:-18789}"
-LAN_CIDR="${LAN_CIDR:-192.168.31.0/24}"
-UNIT="${UNIT:-openclaw-gateway.service}"
-BIND="${BIND:-0.0.0.0}"
+CONFIG="/root/.openclaw/openclaw.json"
+SERVICE="openclaw-gateway"
+PORT="18789"
 
-echo "[1/6] 检查 systemd 单元: ${UNIT}"
-if ! systemctl status "${UNIT}" >/dev/null 2>&1; then
-  echo "❌ 未找到 ${UNIT}。请运行：systemctl list-units --type=service | grep -i openclaw"
+echo "==== OpenClaw 局域网访问启用脚本 ===="
+
+# 1️⃣ 检查配置文件
+if [[ ! -f "$CONFIG" ]]; then
+  echo "❌ 未找到 $CONFIG"
   exit 1
 fi
 
-echo "[2/6] 写入 systemd override: OPENCLAW_GATEWAY_BIND=${BIND}"
-sudo mkdir -p "/etc/systemd/system/${UNIT}.d"
-sudo tee "/etc/systemd/system/${UNIT}.d/override.conf" >/dev/null <<EOF
-[Service]
-Environment="OPENCLAW_GATEWAY_BIND=${BIND}"
-EOF
+echo "✅ 找到配置文件: $CONFIG"
 
-echo "[3/6] 收紧 credentials 目录权限（如存在）"
+# 2️⃣ 备份
+cp -a "$CONFIG" "${CONFIG}.bak.$(date +%Y%m%d%H%M%S)"
+echo "✅ 已备份配置文件"
+
+# 3️⃣ 修改 bind 为 lan
+if grep -q '"bind"' "$CONFIG"; then
+  sed -i 's/"bind"[[:space:]]*:[[:space:]]*"[^"]*"/"bind": "lan"/' "$CONFIG"
+else
+  # 如果没有 bind 字段，则在 gateway 下插入
+  sed -i '/"gateway"[[:space:]]*:[[:space:]]*{/{n; s/.*/  "bind": "lan",\n&/}' "$CONFIG"
+fi
+
+echo "✅ 已设置 gateway.bind = lan"
+
+# 4️⃣ 确保 credentials 权限安全
 if [[ -d /root/.openclaw/credentials ]]; then
-  sudo chmod 700 /root/.openclaw/credentials
-  echo "✅ chmod 700 /root/.openclaw/credentials"
-else
-  echo "ℹ️ 未找到 /root/.openclaw/credentials，跳过"
+  chmod 700 /root/.openclaw/credentials
+  echo "✅ credentials 权限已收紧"
 fi
 
-echo "[4/6] 重新加载并重启服务"
-sudo systemctl daemon-reload
-sudo systemctl restart "${UNIT}"
+# 5️⃣ 重启服务
+echo "🔄 重启 ${SERVICE}..."
+systemctl restart ${SERVICE}
 
-echo "[5/6] 放行局域网访问 ${PORT}/tcp（如启用 UFW）"
-if command -v ufw >/dev/null 2>&1; then
-  if ufw status | head -n1 | grep -qi "active"; then
-    sudo ufw allow from "${LAN_CIDR}" to any port "${PORT}" proto tcp
-    echo "✅ UFW 已放行 ${LAN_CIDR} -> ${PORT}/tcp"
-  else
-    echo "ℹ️ UFW 未启用，跳过"
-  fi
-else
-  echo "ℹ️ 未安装 ufw，跳过"
-fi
+sleep 2
 
-echo "[6/6] 验证监听端口"
-sudo ss -tlnp | grep "${PORT}" || true
+# 6️⃣ 验证监听状态
+echo "📡 当前监听状态:"
+ss -tlnp | grep ${PORT} || true
 
 echo ""
-echo "✅ 完成：现在可在局域网访问 http://192.168.31.57:${PORT}"
+echo "🎉 完成！"
+echo "现在可以在局域网访问："
+echo "http://$(hostname -I | awk '{print $1}'):${PORT}"
+echo ""
+echo "如果仍然是 127.0.0.1，请把 openclaw.json 内容发给我。"
