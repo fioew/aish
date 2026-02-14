@@ -1,17 +1,23 @@
-✅ 特点
+✅ 从 GitHub 下载并运行（你要的“一键命令”）
+方式 A：下载到本地再执行（推荐，便于审计）
+rm -f openclaw_https_lan_fix.sh && \
+curl -fsSL -H "Cache-Control: no-cache" \
+"https://raw.githubusercontent.com/fioew/aish/main/openclaw_https_lan_fix.sh?ts=$(date +%s)" \
+-o openclaw_https_lan_fix.sh && \
+chmod +x openclaw_https_lan_fix.sh && \
+sudo bash openclaw_https_lan_fix.sh
+方式 B：直接 curl | bash（快速但不建议长期用）
+curl -fsSL -H "Cache-Control: no-cache" \
+"https://raw.githubusercontent.com/fioew/aish/main/openclaw_https_lan_fix.sh?ts=$(date +%s)" | sudo bash
+⚠️ 你需要自己手动做的一件事
 
-自动获取 token：优先从正在运行的 openclaw-gateway 进程环境变量读取；读不到就自动生成并写入配置（不会在脚本里写死 token）。
+Windows 上要让 openclaw.lan 指向虚拟机 IP（你现在是 xxx.xxx.xxx.xxx），确保 hosts 有：
 
-自动修复你之前因为写入未知字段导致的崩溃：执行 openclaw doctor --fix。
+xxx.xxx.xxx.xxx openclaw.lan
 
-写入你这个版本支持的永久方案：gateway.controlUi.allowInsecureAuth: true（从而避免 pairing required）。
 
-固化：gateway.auth.token、gateway.controlUi.allowedOrigins、gateway.trustedProxies、gateway.bind=loopback。
+同时 Clash Verge 的全局覆写里（你之前已经做过规则）建议保留：
 
-配置 Caddy：openclaw.lan:8443 + tls internal + 反代到 127.0.0.1:18789，并禁用 HTTP/3（避免一些网络环境问题）。
+.lan / LAN 直连
 
-收紧权限：chmod 700 /root/.openclaw/credentials。
-
-自动重启 openclaw-gateway（user service）+ caddy（system service）。
-
-脚本默认使用：域名 openclaw.lan、端口 8443、上游 127.0.0.1:18789。如需改端口/域名，改脚本顶部变量即可。
+dns.hosts 里映射 openclaw.lan -> xxx.xxx.xxx.xxx（避免 Clash DNS 解析失败）
